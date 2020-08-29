@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html>
+
+    <head>
+        <title>Caolorie_counter</title>
+    </head>
+
+    <body>
+    {% if user.is_authenticated %}
+        <h1>{{ user.username }}!</h1>
+    {% else %}
+        <h1>Welcome to Calorie counter</h1>
+    {% endif %}
+
+    {% if user.is_authenticated %}
+        <a href="/calo/logout/">Logout</a><br />
+        <a href="/calo/user/{{user_profile.id}}">Profile</a>
+    {% else %}
+        <a href="/calo/register/">Register Here</a><br />
+        <a href="/calo/login/">Login</a><br />
+
+    {% endif %}
+
+    </body>
+</html>
