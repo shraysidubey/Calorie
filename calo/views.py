@@ -1,11 +1,13 @@
 from django.shortcuts import render
 from django.http import HttpResponse
-from calo.forms import UserForm, UserProfileForm
+from calo.forms import UserForm, UserProfileForm, Food_qtyForm, ActivityForm
 from django.contrib.auth import authenticate, login
 from django.http import HttpResponseRedirect, HttpResponse
 from django.contrib.auth import logout
 from django.contrib.auth.decorators import login_required
-from calo.models import UserProfile
+from calo.models import UserProfile, Activity, Food_qty
+import requests, json
+import datetime as DT
 
 def index(request):
 
@@ -15,11 +17,40 @@ def index(request):
         user_profile = UserProfile.objects.get(user=request.user.id)
         context_dict['user_profile'] = user_profile
 
+        if request.method == 'POST' and 'food_submit' in request.POST:
+            form = Food_qtyForm(request.POST)
+
+            if form.is_valid():
+                user_profile = UserProfile.objects.get(user= request.user.id)
+                food = form.save(commit=False)
+                food.calories = get_Calories(food.food_consume)
+                context_dict['calorie_change'] = "+" + str(food.calories)
+                food.user = user_profile
+                food.save()
+
+        context_dict['form'] = Food_qtyForm()
+
+        if request.method == 'POST' and "activity_submit" in request.POST:
+            form = ActivityForm(request.POST)
+            if form.is_valid():
+                user_profile = UserProfile.objects.get(user=request.user.id)
+                activity = form.save(commit=False)                              #form alreadt contain exercise and & its object has
+                activity.calories_burned = burned_calorie(user_profile,activity)
+                context_dict['calorie_change1'] = "-" + str(activity.calories_burned)
+                activity.user = user_profile
+                activity.save()
+
+        context_dict['form1'] = ActivityForm()
+
+        context_dict['activity_date_dict'] = history_of_calorieburned(user_profile)
+
+        context_dict['history_of_calorie'] = history_of_calorie_consumed(user_profile)
+
+        context_dict['all_history'] = all_history(user_profile)
 
     return render(request, 'calo/index.html', context_dict)
 
 def register(request):
-
 
     registered = False
 
@@ -128,4 +159,85 @@ def profile(request, user_id):
         print("UserNot found")
         pass
     return render(request, 'calo/profile.html', context_dict)
+
+
+def get_Calories(food_consume):
+    url = "https://edamam-edamam-nutrition-analysis.p.rapidapi.com/api/nutrition-data"
+
+    querystring = {"ingr": food_consume}
+
+    headers = {'x-rapidapi-host': "edamam-edamam-nutrition-analysis.p.rapidapi.com",
+               'x-rapidapi-key': "803c702c04msh767a6ffe9232ddap17d2b7jsn376522bffba6"}
+
+    response = requests.request("GET", url, headers=headers, params=querystring)
+
+    food_dict = json.loads(response.text)
+
+    return food_dict['calories']
+
+
+def burned_calorie(user_ptofile, activity):
+
+    querystring={}
+
+    querystring['height_cm']=user_ptofile.Height
+    querystring['weight_kg']=user_ptofile.Weight
+    querystring['age']=user_ptofile.age
+    querystring['gender']=user_ptofile.gender
+    querystring['query']=activity.exercise                   #take if from FORM
+
+    url = "https://trackapi.nutritionix.com/v2/natural/exercise/"
+
+    #querystring = {'query': "ran 3 miles","gender":"female","weight_kg":"72.5","height_cm":"167.64","age":"30"}
+
+    headers = {'x-app-id': "6b0ac11b",'x-app-key': "3bb8f07dbf982337da050c09e23f96f1"}
+
+    response = requests.post(url, headers=headers, data=querystring)
+
+    activity_dict = json.loads(response.text)
+    A = activity_dict['exercises']
+    K = (A[0])
+    return K['nf_calories']
+
+def history_of_calorieburned(user_profile):
+    today = DT.date.today()
+    week_ago = today - DT.timedelta(days=7)
+    pre_record = Activity.objects.filter(user=user_profile).filter(date_added__gte=week_ago)
+    dat_dict = {}
+    for i in pre_record:
+        temp_date = i.date_added
+        dat_key = str(temp_date.date())
+        if dat_key not in dat_dict:
+            dat_dict[dat_key] = i.calories_burned
+        else:
+            dat_dict[dat_key] += i.calories_burned
+    return dat_dict
+
+
+def history_of_calorie_consumed(user_profile):
+    today = DT.date.today()
+    week_ago = today - DT.timedelta(days=7)
+    pre_record = Food_qty.objects.filter(user=user_profile.id).filter(date_added__gte=week_ago)
+    dat_dict = {}
+    for i in pre_record:
+        temp_date = i.date_added
+        dat_key = str(temp_date.date())
+        if dat_key not in dat_dict:
+            dat_dict[dat_key] = i.calories
+        else:
+            dat_dict[dat_key] += i.calories
+    return dat_dict
+
+def all_history(user_profile):
+
+    P = {}
+    today = DT.date.today()
+    week_ago = today - DT.timedelta(days=2)
+    pre_record1 = Food_qty.objects.filter(user=user_profile.id).filter(date_added__gte=week_ago)
+    pre_record2 = Activity.objects.filter(user=user_profile).filter(date_added__gte=week_ago)
+    P['food_list'] = pre_record1
+    P['calories'] = pre_record1
+    P['activity_list'] = pre_record2
+
+    return P
 
